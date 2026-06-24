@@ -1,187 +1,126 @@
 import streamlit as st
-from datetime import datetime, date, time, timedelta
+from datetime import datetime, date, timedelta
 
-st.set_page_config(page_title="Compensatory Rest Calculator")
+THRESHOLD_MINUTES = 90
+REQUIRED_REST_MINUTES = 540
 
-THRESHOLD = timedelta(hours=1, minutes=30)
-REST_REQUIRED = timedelta(hours=9)
-
-WINDOW_START = time(0, 0)
-WINDOW_END = time(5, 0)
-
-
-def parse_time_input(time_str):
+def parse_time(t):
     try:
-        return datetime.strptime(time_str.strip(), "%H:%M").time()
+        return datetime.strptime(t, "%H:%M")
     except:
         return None
 
-
-def combine(d, t):
-    return datetime.combine(d, t)
-
-
-def overlap_interval(start1, end1, start2, end2):
-    start = max(start1, start2)
-    end = min(end1, end2)
-
-    if end <= start:
-        return None
-
-    return start, end
-
-
-def qualifying_segment(start, end, window_start, window_end):
-
-    overlap = overlap_interval(start, end, window_start, window_end)
-
-    if not overlap:
-        return None
-
-    seg_start, seg_end = overlap
-
-    if seg_end - seg_start >= THRESHOLD:
-        return seg_start, seg_end
-
-    return None
-
-
-def find_latest_qualifying(efforts, window_start, window_end):
-
-    qualifying = []
-
-    for start, end in efforts:
-
-        segment = qualifying_segment(start, end, window_start, window_end)
-
-        if segment:
-            qualifying.append((start, end, segment))
-
-    if not qualifying:
-        return None
-
-    qualifying.sort(key=lambda x: x[1])
-    return qualifying[-1]
-
-
 st.title("Compensatory Rest Calculator")
-
-st.write(
-    "Calculate earliest allowed start time when compensatory rest is triggered "
-    "by night work between 00:00–05:00."
-)
 
 shift_date = st.date_input("Date of next regular shift", value=date.today())
 
 regular_start_str = st.text_input("Regular shift start (HH:MM)", value="07:00")
-
-regular_start = parse_time_input(regular_start_str)
+regular_start = parse_time(regular_start_str)
 
 if not regular_start:
-    st.error("Regular shift start must be written as HH:MM")
+    st.error("Regular shift start must be HH:MM")
     st.stop()
 
-st.header("Night work efforts")
+st.header("Night disturbances (00:00–05:00)")
 
 if "efforts" not in st.session_state:
     st.session_state.efforts = []
 
-if st.button("Add work effort"):
-    st.session_state.efforts.append({"start": "00:00", "end": "01:30"})
-
+if st.button("Add disturbance"):
+    st.session_state.efforts.append({"start":"00:00","end":"01:00"})
 
 for i, effort in enumerate(st.session_state.efforts):
 
-    col1, col2, col3 = st.columns([3,3,1])
+    col1,col2,col3 = st.columns([3,3,1])
 
     with col1:
         effort["start"] = st.text_input(
             f"Start #{i+1} (HH:MM)",
             value=effort["start"],
-            key=f"start{i}"
+            key=f"s{i}"
         )
 
     with col2:
         effort["end"] = st.text_input(
             f"End #{i+1} (HH:MM)",
             value=effort["end"],
-            key=f"end{i}"
+            key=f"e{i}"
         )
 
     with col3:
-        if st.button("Remove", key=f"remove{i}"):
+        if st.button("Remove", key=f"r{i}"):
             st.session_state.efforts.pop(i)
             st.rerun()
 
 
-if st.button("Calculate earliest allowed start time"):
+if st.button("Calculate"):
 
-    night_date = shift_date - timedelta(days=1)
-
-    # Night window 00:00–05:00 same night as disturbance
-    window_start = combine(shift_date, WINDOW_START)
-    window_end = combine(shift_date, WINDOW_END)
-
-    efforts = []
+    disturbances = []
 
     for e in st.session_state.efforts:
 
-        start_time = parse_time_input(e["start"])
-        end_time = parse_time_input(e["end"])
+        start = parse_time(e["start"])
+        end = parse_time(e["end"])
 
-        if not start_time or not end_time:
-            st.error("All times must be written in HH:MM format.")
+        if not start or not end:
+            st.error("Times must be HH:MM")
             st.stop()
 
-        start = combine(night_date, start_time)
-        end = combine(night_date, end_time)
+        start_minutes = start.hour*60 + start.minute
+        end_minutes = end.hour*60 + end.minute
 
-        if end <= start:
-            end += timedelta(days=1)
+        if end_minutes <= start_minutes:
+            st.error("End time must be after start time")
+            st.stop()
 
-        efforts.append((start, end))
+        disturbances.append((start_minutes,end_minutes))
 
-    latest = find_latest_qualifying(efforts, window_start, window_end)
+    disturbances.sort()
 
-    regular_start_dt = combine(shift_date, regular_start)
+    qualifying = False
+
+    for s,e in disturbances:
+        if e-s >= THRESHOLD_MINUTES:
+            qualifying = True
+
+    if not qualifying:
+
+        st.warning("No disturbance ≥ 1.5 hours.")
+        st.write(f"Regular start applies: {regular_start_str}")
+        st.stop()
+
+    rest_taken = 0
+
+    for i in range(len(disturbances)-1):
+
+        prev_end = disturbances[i][1]
+        next_start = disturbances[i+1][0]
+
+        gap = next_start - prev_end
+
+        if gap > 0:
+            rest_taken += gap
+
+    last_end = disturbances[-1][1]
+
+    remaining_rest = REQUIRED_REST_MINUTES - rest_taken
+
+    if remaining_rest < 0:
+        remaining_rest = 0
+
+    earliest_start_minutes = last_end + remaining_rest
+
+    hours = earliest_start_minutes // 60
+    minutes = earliest_start_minutes % 60
+
+    earliest_start = f"{hours:02}:{minutes:02}"
 
     st.subheader("Result")
 
-    if not latest:
+    st.write(f"Rest already taken between disturbances: {rest_taken} minutes")
+    st.write(f"Remaining rest required: {remaining_rest} minutes")
 
-        st.warning(
-            "No qualifying work effort of at least 1.5 hours within 00:00–05:00."
-        )
-
-        st.write(
-            f"Regular start time applies: **{regular_start_dt.strftime('%H:%M')}**"
-        )
-
+    if earliest_start > regular_start_str:
+        st.success(f"Earliest allowed start time: {earliest_start}")
     else:
-
-        start, end, segment = latest
-        seg_start, seg_end = segment
-
-        rest_start = end
-        earliest_start = rest_start + REST_REQUIRED
-
-        st.write("Qualifying work segment within 00:00–05:00:")
-        st.write(f"{seg_start.strftime('%H:%M')} – {seg_end.strftime('%H:%M')}")
-
-        st.write("Last qualifying work effort:")
-        st.write(f"{start.strftime('%H:%M')} – {end.strftime('%H:%M')}")
-
-        st.write("Required rest period:")
-        st.write(f"{rest_start.strftime('%H:%M')} – {earliest_start.strftime('%H:%M')}")
-
-        if earliest_start > regular_start_dt:
-
-            st.success(
-                f"Earliest allowed start time: **{earliest_start.strftime('%H:%M')}**"
-            )
-
-        else:
-
-            st.success(
-                f"Regular shift start applies: **{regular_start_dt.strftime('%H:%M')}**"
-            )
+        st.success(f"Regular start time applies: {regular_start_str}")
