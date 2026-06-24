@@ -11,12 +11,19 @@ WINDOW_END = 300
 def parse_time(t):
     try:
         dt = datetime.strptime(t, "%H:%M")
-        return dt.hour * 60 + dt.minute
+        minutes = dt.hour * 60 + dt.minute
+
+        if minutes >= 720:
+            minutes -= 1440
+
+        return minutes
+
     except:
         return None
 
 
 def clip_to_window(start, end):
+
     start = max(start, WINDOW_START)
     end = min(end, WINDOW_END)
 
@@ -27,8 +34,13 @@ def clip_to_window(start, end):
 
 
 def minutes_to_time(m):
+
     h = m // 60
     m = m % 60
+
+    if h < 0:
+        h += 24
+
     return f"{h:02}:{m:02}"
 
 
@@ -103,11 +115,7 @@ if st.button("Calculate"):
         st.warning("No disturbances occurred between 00:00 and 05:00.")
         st.stop()
 
-    qualifying = False
-
-    for s, e in disturbances:
-        if e - s >= THRESHOLD:
-            qualifying = True
+    qualifying = any((e - s) >= THRESHOLD for s, e in disturbances)
 
     if not qualifying:
         st.warning("No disturbance ≥ 1.5 hours within 00:00–05:00.")
