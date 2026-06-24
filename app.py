@@ -12,7 +12,7 @@ WINDOW_END = time(5, 0)
 
 def parse_time_input(time_str):
     try:
-        return datetime.strptime(time_str, "%H:%M").time()
+        return datetime.strptime(time_str.strip(), "%H:%M").time()
     except:
         return None
 
@@ -61,14 +61,14 @@ def find_latest_qualifying(efforts, window_start, window_end):
         return None
 
     qualifying.sort(key=lambda x: x[1])
-
     return qualifying[-1]
 
 
 st.title("Compensatory Rest Calculator")
 
 st.write(
-    "Calculate earliest allowed start time when compensatory rest is triggered by night work between 00:00–05:00."
+    "Calculate earliest allowed start time when compensatory rest is triggered "
+    "by night work between 00:00–05:00."
 )
 
 shift_date = st.date_input("Date of next regular shift", value=date.today())
@@ -118,6 +118,7 @@ if st.button("Calculate earliest allowed start time"):
 
     night_date = shift_date - timedelta(days=1)
 
+    # Night window 00:00–05:00 same night as disturbance
     window_start = combine(shift_date, WINDOW_START)
     window_end = combine(shift_date, WINDOW_END)
 
@@ -148,8 +149,13 @@ if st.button("Calculate earliest allowed start time"):
 
     if not latest:
 
-        st.warning("No qualifying work effort of at least 1.5 hours within 00:00–05:00.")
-        st.write(f"Regular start time applies: **{regular_start_dt.strftime('%H:%M')}**")
+        st.warning(
+            "No qualifying work effort of at least 1.5 hours within 00:00–05:00."
+        )
+
+        st.write(
+            f"Regular start time applies: **{regular_start_dt.strftime('%H:%M')}**"
+        )
 
     else:
 
