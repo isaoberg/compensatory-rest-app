@@ -44,7 +44,7 @@ def minuter_till_tid(m):
     return f"{h:02}:{m:02}"
 
 
-st.title("Beräkning av kompenserad dygnsvila")
+st.title("Kalkylator för kompenserad dygnsvila")
 
 st.write(
     "Beräknar tidigaste tillåtna starttid efter nattliga störningar "
