@@ -1,39 +1,39 @@
 import streamlit as st
 from datetime import datetime, date
 
-THRESHOLD = 90
-REST_REQUIRED = 540
+TRÖSKEL = 90
+KRÄVD_VILA = 540
 
-WINDOW_START = 0
-WINDOW_END = 300
+FÖNSTER_START = 0
+FÖNSTER_SLUT = 300
 
 
-def parse_time(t):
+def tolka_tid(t):
     try:
         dt = datetime.strptime(t, "%H:%M")
-        minutes = dt.hour * 60 + dt.minute
+        minuter = dt.hour * 60 + dt.minute
 
-        if minutes >= 720:
-            minutes -= 1440
+        if minuter >= 720:
+            minuter -= 1440
 
-        return minutes
+        return minuter
 
     except:
         return None
 
 
-def clip_to_window(start, end):
+def klipp_till_fönster(start, slut):
 
-    start = max(start, WINDOW_START)
-    end = min(end, WINDOW_END)
+    start = max(start, FÖNSTER_START)
+    slut = min(slut, FÖNSTER_SLUT)
 
-    if end <= start:
+    if slut <= start:
         return None
 
-    return start, end
+    return start, slut
 
 
-def minutes_to_time(m):
+def minuter_till_tid(m):
 
     h = m // 60
     m = m % 60
@@ -44,118 +44,127 @@ def minutes_to_time(m):
     return f"{h:02}:{m:02}"
 
 
-st.title("Compensatory Rest Calculator")
+st.title("Beräkning av kompenserad dygnsvila")
 
-shift_date = st.date_input("Date of next regular shift", value=date.today())
+st.write(
+    "Beräknar tidigaste tillåtna starttid efter nattliga störningar "
+    "mellan 00:00 och 05:00."
+)
 
-regular_start_str = st.text_input("Regular shift start (HH:MM)", value="07:00")
-regular_start = parse_time(regular_start_str)
+skiftdatum = st.date_input("Datum för nästa ordinarie arbetspass", value=date.today())
 
-if regular_start is None:
-    st.error("Regular shift start must be HH:MM")
+ordinarie_start_str = st.text_input(
+    "Ordinarie starttid (HH:MM)",
+    value="07:00"
+)
+
+ordinarie_start = tolka_tid(ordinarie_start_str)
+
+if ordinarie_start is None:
+    st.error("Starttiden måste anges som HH:MM")
     st.stop()
 
-st.header("Night disturbances")
+st.header("Störningar under natten")
 
-if "efforts" not in st.session_state:
-    st.session_state.efforts = []
+if "störningar" not in st.session_state:
+    st.session_state.störningar = []
 
-if st.button("Add disturbance"):
-    st.session_state.efforts.append({"start": "00:00", "end": "01:00"})
+if st.button("Lägg till störning"):
+    st.session_state.störningar.append({"start": "00:00", "slut": "01:00"})
 
 
-for i, effort in enumerate(st.session_state.efforts):
+for i, störning in enumerate(st.session_state.störningar):
 
     col1, col2, col3 = st.columns([3,3,1])
 
     with col1:
-        effort["start"] = st.text_input(
+        störning["start"] = st.text_input(
             f"Start #{i+1} (HH:MM)",
-            value=effort["start"],
+            value=störning["start"],
             key=f"s{i}"
         )
 
     with col2:
-        effort["end"] = st.text_input(
-            f"End #{i+1} (HH:MM)",
-            value=effort["end"],
+        störning["slut"] = st.text_input(
+            f"Slut #{i+1} (HH:MM)",
+            value=störning["slut"],
             key=f"e{i}"
         )
 
     with col3:
-        if st.button("Remove", key=f"r{i}"):
-            st.session_state.efforts.pop(i)
+        if st.button("Ta bort", key=f"r{i}"):
+            st.session_state.störningar.pop(i)
             st.rerun()
 
 
-if st.button("Calculate"):
+if st.button("Beräkna"):
 
-    disturbances = []
+    störningar = []
 
-    for e in st.session_state.efforts:
+    for s in st.session_state.störningar:
 
-        start = parse_time(e["start"])
-        end = parse_time(e["end"])
+        start = tolka_tid(s["start"])
+        slut = tolka_tid(s["slut"])
 
-        if start is None or end is None:
-            st.error("Times must be HH:MM")
+        if start is None or slut is None:
+            st.error("Tider måste anges som HH:MM")
             st.stop()
 
-        if end <= start:
-            end += 1440
+        if slut <= start:
+            slut += 1440
 
-        clipped = clip_to_window(start, end)
+        klippt = klipp_till_fönster(start, slut)
 
-        if clipped:
-            disturbances.append(clipped)
+        if klippt:
+            störningar.append(klippt)
 
-    disturbances.sort()
+    störningar.sort()
 
-    if not disturbances:
-        st.warning("No disturbances occurred between 00:00 and 05:00.")
+    if not störningar:
+        st.warning("Ingen störning inträffade mellan 00:00 och 05:00.")
         st.stop()
 
-    qualifying = any((e - s) >= THRESHOLD for s, e in disturbances)
+    kvalificerar = any((e - s) >= TRÖSKEL for s, e in störningar)
 
-    if not qualifying:
-        st.warning("No disturbance ≥ 1.5 hours within 00:00–05:00.")
-        st.write(f"Regular start applies: {regular_start_str}")
+    if not kvalificerar:
+        st.warning("Ingen störning är minst 1 timme och 30 minuter.")
+        st.write(f"Ordinarie starttid gäller: {ordinarie_start_str}")
         st.stop()
 
-    rest_taken = 0
+    vila_mellan = 0
 
-    for i in range(len(disturbances) - 1):
+    for i in range(len(störningar) - 1):
 
-        prev_end = disturbances[i][1]
-        next_start = disturbances[i + 1][0]
+        slut_förra = störningar[i][1]
+        start_nästa = störningar[i + 1][0]
 
-        gap = next_start - prev_end
+        paus = start_nästa - slut_förra
 
-        if gap > 0:
-            rest_taken += gap
+        if paus > 0:
+            vila_mellan += paus
 
-    last_end = disturbances[-1][1]
+    sista_slut = störningar[-1][1]
 
-    remaining_rest = REST_REQUIRED - rest_taken
+    kvarvarande_vila = KRÄVD_VILA - vila_mellan
 
-    if remaining_rest < 0:
-        remaining_rest = 0
+    if kvarvarande_vila < 0:
+        kvarvarande_vila = 0
 
-    earliest_start = last_end + remaining_rest
+    tidigaste_start = sista_slut + kvarvarande_vila
 
-    st.subheader("Result")
+    st.subheader("Resultat")
 
-    st.write(f"Rest already taken between disturbances: {rest_taken} minutes")
-    st.write(f"Remaining rest required: {remaining_rest} minutes")
+    st.write(f"Vila mellan störningar: {vila_mellan} minuter")
+    st.write(f"Kvarvarande vila som krävs: {kvarvarande_vila} minuter")
 
-    if earliest_start > regular_start:
+    if tidigaste_start > ordinarie_start:
 
         st.success(
-            f"Earliest allowed start time: {minutes_to_time(earliest_start)}"
+            f"Tidigaste tillåtna starttid: {minuter_till_tid(tidigaste_start)}"
         )
 
     else:
 
         st.success(
-            f"Regular shift start applies: {regular_start_str}"
+            f"Ordinarie starttid gäller: {ordinarie_start_str}"
         )
