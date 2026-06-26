@@ -1,14 +1,28 @@
 import streamlit as st
 from datetime import datetime, date
 
-TRÖSKEL = 90
-KRÄVD_VILA = 540
+# -------------------------------------------------
+# Inställningar
+# -------------------------------------------------
+
+st.set_page_config(
+    page_title="Dygnsvila – beräkningsverktyg",
+    layout="centered"
+)
+
+TRÖSKEL = 90        # minuter
+KRÄVD_VILA = 540    # 9 timmar
 
 FÖNSTER_START = 0
-FÖNSTER_SLUT = 300
+FÖNSTER_SLUT = 300  # 05:00
 
+
+# -------------------------------------------------
+# Hjälpfunktioner
+# -------------------------------------------------
 
 def tolka_tid(t):
+
     try:
         dt = datetime.strptime(t, "%H:%M")
         minuter = dt.hour * 60 + dt.minute
@@ -44,14 +58,39 @@ def minuter_till_tid(m):
     return f"{h:02}:{m:02}"
 
 
-st.title("Kalkylator för kompenserad dygnsvila")
+# -------------------------------------------------
+# Titel
+# -------------------------------------------------
 
-st.write(
-    "Beräknar tidigaste tillåtna starttid efter nattliga störningar "
-    "mellan 00:00 och 05:00."
+st.title("Beräkning av kompenserad dygnsvila")
+
+st.markdown(
+"""
+Beräknar **tidigaste tillåtna starttid** efter nattliga störningar.
+
+Regler:
+
+• Omfattande störningar räknas endast mellan **00:00–05:00**  
+• Omfattande störning = störning **≥ 1 timme 30 minuter**  
+• Vid flera störningar samma natt krävs att minst **en störning ≥ 1 timme 30 minuter**  
+• Det är den **aktiva tiden** på störningarna som räknas  
+• Kompenserad vila räknas från **sista störningen**  
+• Vila mellan störningar räknas av från de **9 timmar** som ska kompenseras.
+"""
 )
 
-skiftdatum = st.date_input("Datum för nästa ordinarie arbetspass", value=date.today())
+st.divider()
+
+# -------------------------------------------------
+# Ordinarie arbetspass
+# -------------------------------------------------
+
+st.header("Ordinarie arbetspass")
+
+skiftdatum = st.date_input(
+    "Datum för nästa arbetspass",
+    value=date.today()
+)
 
 ordinarie_start_str = st.text_input(
     "Ordinarie starttid (HH:MM)",
@@ -64,12 +103,18 @@ if ordinarie_start is None:
     st.error("Starttiden måste anges som HH:MM")
     st.stop()
 
+st.divider()
+
+# -------------------------------------------------
+# Störningar
+# -------------------------------------------------
+
 st.header("Störningar under natten")
 
 if "störningar" not in st.session_state:
     st.session_state.störningar = []
 
-if st.button("Lägg till störning"):
+if st.button("➕ Lägg till störning"):
     st.session_state.störningar.append({"start": "00:00", "slut": "01:00"})
 
 
@@ -96,8 +141,13 @@ for i, störning in enumerate(st.session_state.störningar):
             st.session_state.störningar.pop(i)
             st.rerun()
 
+st.divider()
 
-if st.button("Beräkna"):
+# -------------------------------------------------
+# Beräkning
+# -------------------------------------------------
+
+if st.button("Beräkna tidigaste starttid"):
 
     störningar = []
 
@@ -128,7 +178,7 @@ if st.button("Beräkna"):
 
     if not kvalificerar:
         st.warning("Ingen störning är minst 1 timme och 30 minuter.")
-        st.write(f"Ordinarie starttid gäller: {ordinarie_start_str}")
+        st.write(f"Ordinarie starttid gäller: **{ordinarie_start_str}**")
         st.stop()
 
     vila_mellan = 0
@@ -154,17 +204,28 @@ if st.button("Beräkna"):
 
     st.subheader("Resultat")
 
-    st.write(f"Vila mellan störningar: {vila_mellan} minuter")
-    st.write(f"Kvarvarande vila som krävs: {kvarvarande_vila} minuter")
+    col1, col2 = st.columns(2)
+
+    col1.metric(
+        "Vila mellan störningar",
+        f"{vila_mellan} min"
+    )
+
+    col2.metric(
+        "Kvarvarande vila",
+        f"{kvarvarande_vila} min"
+    )
+
+    st.divider()
 
     if tidigaste_start > ordinarie_start:
 
         st.success(
-            f"Tidigaste tillåtna starttid: {minuter_till_tid(tidigaste_start)}"
+            f"Tidigaste tillåtna starttid: **{minuter_till_tid(tidigaste_start)}**"
         )
 
     else:
 
         st.success(
-            f"Ordinarie starttid gäller: {ordinarie_start_str}"
+            f"Ordinarie starttid gäller: **{ordinarie_start_str}**"
         )
